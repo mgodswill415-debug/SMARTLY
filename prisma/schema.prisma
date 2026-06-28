@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  whatsapp   String
+  interests  String   @db.Text   // JSON array stored as string
+  career     String
+  curriculum String   @default("waec-ss3")
+  deviceFingerprint String? // simple device ID from localStorage
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  sessions   LessonSession[]
+  authSessions AuthSession[]
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LessonSession {
+  id           String   @id @default(cuid())
+  userId       String
+  topic         String
+  subject       String
+  interestUsed  String
+  careerUsed    String
+  score        Int?     // null if quiz not taken yet
+  totalQuestions Int?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+}
