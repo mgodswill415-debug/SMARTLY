@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { randomBytes } from 'crypto';
+import bcrypt from 'bcryptjs';
 
 function generateToken(): string {
   return randomBytes(32).toString('hex');
@@ -8,53 +9,31 @@ function generateToken(): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, whatsapp } = await request.json();
-
-    if (!email || !email.trim()) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
-    }
-    if (!whatsapp || !whatsapp.trim()) {
-      return NextResponse.json({ error: 'WhatsApp number is required' }, { status: 400 });
-    }
+    const { email, password } = await request.json();
+    if (!email || !email.trim()) return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    if (!password) return NextResponse.json({ error: 'Password is required' }, { status: 400 });
 
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedWhatsapp = whatsapp.trim();
+    const user = await db.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
 
-    // Find user by email AND whatsapp
-    const user = await db.user.findFirst({
-      where: { email: normalizedEmail, whatsapp: normalizedWhatsapp },
-    });
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: 'Account not found. Check your email and WhatsApp number.' }, { status: 404 });
-    }
-
-    // Create session
     const token = generateToken();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
+    await db.authSession.create({ data: { userId: user.id, token, expiresAt } });
+    await db.authSession.deleteMany({ where: { userId: user.id, expiresAt: { lt: new Date() } } });
 
-    await db.authSession.create({
-      data: { userId: user.id, token, expiresAt },
-    });
-
-    // Clean old expired sessions
-    await db.authSession.deleteMany({
-      where: { userId: user.id, expiresAt: { lt: new Date() } },
-    });
-
-    // Parse interests
     let parsedInterests: string[] = [];
-    try { parsedInterests = JSON.parse(user.interests); } catch { /* ignore */ }
-
+    try { parsedInterests = JSON.parse(user.interests); } catch {}
     const hasProfile = parsedInterests.length > 0 && !!user.career;
 
     return NextResponse.json({
       user: { id: user.id, name: user.name, email: user.email, whatsapp: user.whatsapp },
       profile: { name: user.name, interests: parsedInterests, career: user.career },
-      token,
-      isNew: false,
-      hasProfile,
+      token, isNew: false, hasProfile,
     });
   } catch (error) {
     console.error('Login error:', error);

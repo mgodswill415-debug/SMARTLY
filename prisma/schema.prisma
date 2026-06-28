@@ -12,6 +12,7 @@ model User {
   id         String   @id @default(cuid())
   name       String
   email      String   @unique
+  password   String
   whatsapp   String
   interests  String   @db.Text   // JSON array stored as string
   career     String
